@@ -1,6 +1,4 @@
-import postgresql from 'pg';
-import os from 'os';
-
+const postgresql = require('pg')
 const { Pool } = postgresql;
 
 export default (callback = null) => {
