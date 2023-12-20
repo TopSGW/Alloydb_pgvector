@@ -5,7 +5,7 @@ postgreConnector()
 
 const app = express();
 
-app.post('/get_matterId', async (req, res) => {
+app.get('/get_matterId', async (req, res) => {
   const rows = await process.postgresql.query('SELECT id FROM matters');
   res.status(200).send(JSON.stringify(rows));
 });
