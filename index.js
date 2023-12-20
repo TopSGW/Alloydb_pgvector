@@ -1,7 +1,7 @@
 const express = require('express')
-const postgresql = require('./postgres.js')
+const postgreConnector = require('./postgres.js')
 
-postgresql()
+postgreConnector()
 
 const app = express();
 

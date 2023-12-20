@@ -1,7 +1,7 @@
 const postgresql = require('pg')
 const { Pool } = postgresql;
 
-export default (callback = null) => {
+const postgreConnector = (callback = null) => {
   // NOTE: PostgreSQL creates a superuser by default on localhost using the OS username.
   const pool = new Pool({
     user: process.env.USER,
@@ -31,3 +31,5 @@ export default (callback = null) => {
 
   return connection;
 };
+
+module.exports = postgreConnector;
