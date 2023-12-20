@@ -1,5 +1,5 @@
 const express = require('express')
-import postgresql from './postgresql.js';
+const postgresql = require('./postgres.js')
 
 postgresql()
 
