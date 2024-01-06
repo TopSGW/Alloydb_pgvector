@@ -1,15 +1,17 @@
-const express = require('express')
-const postgreConnector = require('./postgres.js')
+const { handleInsertEmails, handleUpdateEmails } = require("./postgres");
 
-postgreConnector()
+const express = require("express");
 
 const app = express();
 
-app.get('/get_matterId', async (req, res) => {
-  const rows = await process.postgresql.query('SELECT id FROM matters');
-  res.status(200).send(JSON.stringify(rows));
+app.post("/handleInsertEmails", async (req, res) => {
+  res.status(200).send(await handleInsertEmails(req.body));
+});
+
+app.post("/handleUpdateEmails", async (req, res) => {
+  res.status(200).send(await handleUpdateEmails(req.body));
 });
 
 app.listen(3000, () => {
-  console.log('Server running on 3000');
+  console.log("Server running on 3000");
 });
