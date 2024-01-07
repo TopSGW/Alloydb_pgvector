@@ -1,5 +1,5 @@
 const { handleInsertEmails, handleUpdateEmails } = require("./postgres");
-
+require("dotenv").config();
 const express = require("express");
 
 const app = express();
