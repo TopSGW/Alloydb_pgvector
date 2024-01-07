@@ -12,6 +12,8 @@ const getAlloyDBClient = () => {
     connectionTimeoutMillis: 2000,
     keepAlive: true,
   });
+  console.log("check AlloyDB host");
+  console.log(process.env.ALLOY_DB_HOST);
   const connection = {
     pool,
     query: async (text, params) => {
