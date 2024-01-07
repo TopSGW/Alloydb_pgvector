@@ -13,6 +13,8 @@ const pool = new Pool({
 });
 
 const getAlloyDBClient = () => {
+  console.log("check AlloyDB host");
+  console.log(process.env.ALLOY_DB_HOST);
   const connection = {
     pool,
     query: async (text, params) => {
