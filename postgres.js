@@ -38,6 +38,7 @@ const getAlloyDBClient = () => {
 
 module.exports.handleInsertEmails = async (body) => {
   try {
+    console.log(body);
     const data = body.event.data.new;
     console.log(`uuid: ${data.uuid}`);
     const alloyDBClient = getAlloyDBClient();
