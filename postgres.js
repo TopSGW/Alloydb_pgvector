@@ -5,7 +5,7 @@ const getAlloyDBClient = () => {
     process.env.ALLOY_DB_PASSWORD
   }@${process.env.ALLOY_DB_HOST}:${process.env.ALLOY_DB_PORT || 5432}/${
     process.env.ALLOY_DB_DBNAME
-  }??sslrootcert=~/ssl/server.crt&sslmode=verify-ca`;
+  }?sslrootcert=~/ssl/server.crt&sslmode=verify-ca`;
 
   const pool = new Pool({
     connectionString,
