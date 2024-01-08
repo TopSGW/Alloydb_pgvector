@@ -15,6 +15,10 @@ const getAlloyDBClient = () => {
     idle: 30000,
   });
 
+  pool.on("error", function (err, client) {
+    console.error("idle client error", err.message, err.stack);
+  });
+
   const connection = {
     pool,
     query: async (text, params) => {
