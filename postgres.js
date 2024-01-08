@@ -11,6 +11,9 @@ const getAlloyDBClient = () => {
     ssl: {
       ca: fs.readFileSync("/home/daniil_nikolaev/ssl/server.crt").toString(),
       rejectUnauthorized: true,
+      checkServerIdentity: () => {
+        return null;
+      },
     },
   });
 
