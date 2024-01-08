@@ -9,9 +9,7 @@ const getAlloyDBClient = () => {
     database: process.env.ALLOY_DB_DBNAME,
     password: process.env.ALLOY_DB_PASSWORD,
     port: process.env.ALLOY_DB_PORT || 5432,
-    max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
     keepAlive: true,
   });
 
