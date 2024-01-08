@@ -183,13 +183,13 @@ module.exports.handleUpdateEmails = async (body) => {
 };
 
 module.exports.handleInsertEmails = async (body) => {
-  try {
-    const data = body.event.data.new;
-    console.log(`uuid: ${data.uuid}`);
-    const alloyDBClient = getAlloyDBClient();
-    console.log("alloyDBClient", alloyDBClient);
-    await alloyDBClient.query(
-      `
+  // try {
+  const data = body.event.data.new;
+  console.log(`uuid: ${data.uuid}`);
+  const alloyDBClient = getAlloyDBClient();
+  console.log("alloyDBClient", alloyDBClient);
+  await alloyDBClient.query(
+    `
         UPDATE emails
         SET email_vector = embedding('textembedding-gecko@003',
                             CONCAT(E'Email info \n\n', 'sender: ', sender, 
@@ -203,11 +203,11 @@ module.exports.handleInsertEmails = async (body) => {
                           )
         WHERE uuid = $1;
       `,
-      [data.uuid]
-    );
-    console.log("data.uuid", data.uuid);
-    await alloyDBClient.query(
-      `
+    [data.uuid]
+  );
+  console.log("data.uuid", data.uuid);
+  await alloyDBClient.query(
+    `
         UPDATE emails
         SET email_contact_vector = embedding('textembedding-gecko@003',
                                     CONCAT(E'Email info\n\n', 'Sender: ', sender, 
@@ -218,17 +218,17 @@ module.exports.handleInsertEmails = async (body) => {
                                   )
         WHERE uuid = $1;
       `,
-      [data.uuid]
-    );
+    [data.uuid]
+  );
 
-    console.log("data.uuid1", data.uuid);
-    await alloyDBClient.endPool();
+  console.log("data.uuid1", data.uuid);
+  await alloyDBClient.endPool();
 
-    return { status: "ok", op: "insert" };
-  } catch (error) {
-    console.log(error);
-    throw new Error(error);
-  }
+  return { status: "ok", op: "insert" };
+  // } catch (error) {
+  //   console.log(error);
+  //   throw new Error(error);
+  // }
 };
 
 //Contacts
