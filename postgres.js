@@ -8,6 +8,9 @@ const getAlloyDBClient = () => {
     password: process.env.ALLOY_DB_PASSWORD,
     port: process.env.ALLOY_DB_PORT || 5432,
   });
+  pool.on("error", (err, client) => {
+    console.error("Unexpected error on idle client", err);
+  });
 
   const connection = {
     pool,
@@ -184,6 +187,7 @@ module.exports.handleInsertEmails = async (body) => {
     const data = body.event.data.new;
     console.log(`uuid: ${data.uuid}`);
     const alloyDBClient = getAlloyDBClient();
+    console.log("alloyDBClient", alloyDBClient);
     await alloyDBClient.query(
       `
         UPDATE emails
@@ -201,6 +205,7 @@ module.exports.handleInsertEmails = async (body) => {
       `,
       [data.uuid]
     );
+    console.log("data.uuid", data.uuid);
     await alloyDBClient.query(
       `
         UPDATE emails
@@ -215,6 +220,8 @@ module.exports.handleInsertEmails = async (body) => {
       `,
       [data.uuid]
     );
+
+    console.log("data.uuid1", data.uuid);
     await alloyDBClient.endPool();
 
     return { status: "ok", op: "insert" };
