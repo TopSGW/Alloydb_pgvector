@@ -8,6 +8,7 @@ const getAlloyDBClient = () => {
     password: process.env.ALLOY_DB_PASSWORD,
     port: process.env.ALLOY_DB_PORT || 5432,
   });
+  console.log("process.env.ALLOY_DB_USER", process.env.ALLOY_DB_USER);
   pool.on("error", (err, client) => {
     console.error("Unexpected error on idle client", err);
   });
