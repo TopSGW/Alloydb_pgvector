@@ -1,22 +1,19 @@
 const { Pool } = require("pg");
+const fs = require("fs");
 
 const getAlloyDBClient = () => {
-  // const connectionString =
-  //   `postgresql://${process.env.ALLOY_DB_USER}:${process.env.ALLOY_DB_PASSWORD}@${process.env.ALLOY_DB_HOST}:${process.env.ALLOY_DB_PORT || 5432}/${process.env.ALLOY_DB_DBNAME}?`;
-
   const pool = new Pool({
     user: process.env.ALLOY_DB_USER,
     host: process.env.ALLOY_DB_HOST,
     database: process.env.ALLOY_DB_DBNAME,
     password: process.env.ALLOY_DB_PASSWORD,
     port: process.env.ALLOY_DB_PORT || 5432,
-    ssl: true,
+    ssl: {
+      ca: fs.readFileSync("/home/daniil_nikolaev/ssl/server.crt").toString(),
+      rejectUnauthorized: true,
+    },
   });
-  console.log("process.env.ALLOY_DB_USER", process.env.ALLOY_DB_USER);
-  console.log("process.env.ALLOY_DB_HOST", process.env.ALLOY_DB_HOST);
-  console.log("process.env.ALLOY_DB_DBNAME", process.env.ALLOY_DB_DBNAME);
-  console.log("process.env.ALLOY_DB_PASSWORD", process.env.ALLOY_DB_PASSWORD);
-  console.log("process.env.ALLOY_DB_PORT", process.env.ALLOY_DB_PORT);
+
   pool.on("error", (err, client) => {
     console.error("Unexpected error on idle client", err);
   });
