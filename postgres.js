@@ -1,20 +1,20 @@
 const { Pool } = require("pg");
 
-const pool = new Pool({
-  user: process.env.ALLOY_DB_USER,
-  host: process.env.ALLOY_DB_HOST,
-  database: process.env.ALLOY_DB_DBNAME,
-  password: process.env.ALLOY_DB_PASSWORD,
-  port: process.env.ALLOY_DB_PORT || 5432,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-  keepAlive: true,
-});
-
 const getAlloyDBClient = () => {
   console.log("check AlloyDB host");
   console.log(process.env.ALLOY_DB_HOST);
+  const pool = new Pool({
+    user: process.env.ALLOY_DB_USER,
+    host: process.env.ALLOY_DB_HOST,
+    database: process.env.ALLOY_DB_DBNAME,
+    password: process.env.ALLOY_DB_PASSWORD,
+    port: process.env.ALLOY_DB_PORT || 5432,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+    keepAlive: true,
+  });
+
   const connection = {
     pool,
     query: async (text, params) => {
