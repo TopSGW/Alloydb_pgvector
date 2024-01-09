@@ -1,3 +1,4 @@
+require("dotenv").config();
 const {
   handleInsertEmails,
   handleUpdateEmails,
@@ -6,7 +7,6 @@ const {
   handleInsertContacts,
   handleUpdateContacts,
 } = require("./postgres");
-require("dotenv").config();
 const express = require("express");
 
 const app = express();
