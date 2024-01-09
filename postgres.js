@@ -1,8 +1,6 @@
 const { SecretManagerServiceClient } = require("@google-cloud/secret-manager");
 const { Pool } = require("pg");
 
-let sslCertificate;
-
 const getSSLCertificate = async () => {
   const client = new SecretManagerServiceClient();
 
@@ -14,26 +12,32 @@ const getSSLCertificate = async () => {
   return payload;
 };
 
-await getSSLCertificate().then((result) => (sslCertificate = result));
-
-const pool = new Pool({
-  user: process.env.ALLOY_DB_USER,
-  host: process.env.ALLOY_DB_HOST,
-  database: process.env.ALLOY_DB_DBNAME,
-  password: process.env.ALLOY_DB_PASSWORD,
-  port: process.env.ALLOY_DB_PORT || 5432,
-  ssl: {
-    ca: sslCertificate,
-    rejectUnauthorized: true,
-    checkServerIdentity: () => {
-      return null;
-    },
-  },
-});
-
 const getAlloyDBClient = async () => {
+  const SSLCertificate = await getSSLCertificate();
+  const pool = new Pool({
+    user: process.env.ALLOY_DB_USER,
+    host: process.env.ALLOY_DB_HOST,
+    database: process.env.ALLOY_DB_DBNAME,
+    password: process.env.ALLOY_DB_PASSWORD,
+    port: process.env.ALLOY_DB_PORT || 5432,
+    ssl: {
+      ca: SSLCertificate,
+      rejectUnauthorized: true,
+      checkServerIdentity: () => {
+        return null;
+      },
+    },
+  });
+
+  pool.on("error", (err, client) => {
+    console.error("Unexpected error on idle client", err);
+  });
+
   const connection = {
     pool,
+    endPool: async () => {
+      await pool.end();
+    },
     query: async (text, params) => {
       const client = await pool.connect();
 
@@ -50,6 +54,8 @@ const getAlloyDBClient = async () => {
 
   return connection;
 };
+
+const alloyDBClient = await getAlloyDBClient();
 
 module.exports.getMatchingMatter = async (body) => {
   try {
@@ -90,8 +96,6 @@ module.exports.getMatchingMatter = async (body) => {
       `,
       [emailId, orgId.rows[0].organization_id]
     );
-
-    await alloyDBClient.endPool();
 
     if (!matterId.rowCount) {
       return { msg: "There is no associated matter", rlt: null };
@@ -159,27 +163,6 @@ module.exports.handleUpdateMatters = async (body) => {
         }
       }
     }
-
-    const d_contacts = await alloyDBClient.query(
-      `
-        SELECT contact_vector from contacts where matter_id=$1;
-      `,
-      [data.id]
-    );
-    for (let val of d_contacts.rows) {
-      const choose_email = await alloyDBClient.query(
-        `SELECT $1 <-> email_contact_vector
-        from emails
-        where user_id = (select uuid from users where organization_id=(select organization_id from contacts where matter_id=$2))
-        ORDER BY score
-        LIMIT 1;
-        `,
-        [val.contact_vector, data.id]
-      );
-    }
-
-    await alloyDBClient.endPool();
-
     return { status: "ok", op: "update" };
   } catch (error) {
     console.log(error);
@@ -243,7 +226,6 @@ module.exports.handleInsertMatters = async (body) => {
         }
       }
     }
-    await alloyDBClient.endPool();
 
     return { status: "ok", op: "insert" };
   } catch (error) {
@@ -257,7 +239,6 @@ module.exports.handleInsertMatters = async (body) => {
 module.exports.handleUpdateEmails = async (body) => {
   try {
     const data = body.event.data.new;
-    const alloyDBClient = await getAlloyDBClient();
     await alloyDBClient.query(
       `
         UPDATE emails
@@ -321,7 +302,6 @@ module.exports.handleUpdateEmails = async (body) => {
         [matchingMatterId.rows[0].id, score.rows[0].score, data.uuid]
       );
     }
-    await alloyDBClient.endPool();
 
     return { status: "ok", op: "update" };
   } catch (error) {
@@ -410,8 +390,6 @@ module.exports.handleInsertEmails = async (body) => {
         [data.uuid, matchingMatterId.rows[0].id, score.rows[0].score]
       );
     }
-    await alloyDBClient.endPool();
-
     return { status: "ok", op: "insert" };
   } catch (error) {
     console.log(error);
@@ -439,7 +417,6 @@ module.exports.handleUpdateContacts = async (body) => {
       `,
       [data.id]
     );
-    await alloyDBClient.endPool();
 
     return { status: "ok", op: "update" };
   } catch (error) {
@@ -466,7 +443,6 @@ module.exports.handleInsertContacts = async (body) => {
       `,
       [data.id]
     );
-    await alloyDBClient.endPool();
 
     return { status: "ok", op: "insert" };
   } catch (error) {
