@@ -4,7 +4,7 @@ const { Pool } = require("pg");
 const getSSLCertificate = async () => {
   const client = new SecretManagerServiceClient();
 
-  const projectId = "tempello";
+  const projectId = "1004036681922";
   const secretId = "AlloyDB_SSL";
 
   const [version] = await client.accessSecretVersion({
