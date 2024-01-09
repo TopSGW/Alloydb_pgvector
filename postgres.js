@@ -12,32 +12,29 @@ const getSSLCertificate = async () => {
   return payload;
 };
 
-const getAlloyDBClient = async () => {
-  const SSLCertificate = await getSSLCertificate();
-  const pool = new Pool({
-    user: process.env.ALLOY_DB_USER,
-    host: process.env.ALLOY_DB_HOST,
-    database: process.env.ALLOY_DB_DBNAME,
-    password: process.env.ALLOY_DB_PASSWORD,
-    port: process.env.ALLOY_DB_PORT || 5432,
-    ssl: {
-      ca: SSLCertificate,
-      rejectUnauthorized: true,
-      checkServerIdentity: () => {
-        return null;
-      },
+const SSLCertificate = await getSSLCertificate();
+const pool = new Pool({
+  user: process.env.ALLOY_DB_USER,
+  host: process.env.ALLOY_DB_HOST,
+  database: process.env.ALLOY_DB_DBNAME,
+  password: process.env.ALLOY_DB_PASSWORD,
+  port: process.env.ALLOY_DB_PORT || 5432,
+  ssl: {
+    ca: SSLCertificate,
+    rejectUnauthorized: true,
+    checkServerIdentity: () => {
+      return null;
     },
-  });
+  },
+});
 
-  pool.on("error", (err, client) => {
-    console.error("Unexpected error on idle client", err);
-  });
+pool.on("error", (err, client) => {
+  console.error("Unexpected error on idle client", err);
+});
 
+const getAlloyDBClient = async () => {
   const connection = {
     pool,
-    endPool: async () => {
-      await pool.end();
-    },
     query: async (text, params) => {
       const client = await pool.connect();
 
@@ -71,7 +68,7 @@ module.exports.getMatchingMatter = async (body) => {
     );
 
     if (!orgId.rowCount) {
-      return { msg: "Invalid Email!" };
+      return { msg: "Invalid Email!", rlt: null };
     }
 
     const matterId = await alloyDBClient.query(
@@ -98,17 +95,15 @@ module.exports.getMatchingMatter = async (body) => {
     await alloyDBClient.endPool();
 
     if (!matterId.rowCount) {
-      return { msg: "There is no associated matter" };
+      return { msg: "There is no associated matter", rlt: null };
     }
-    return matterId.rows;
+    return { msg: "ok", rlt: matterId.rows };
   } catch (error) {
     console.log(error);
     throw new Error(error);
   }
 };
-
 // Matters
-
 module.exports.handleUpdateMatters = async (body) => {
   try {
     const data = body.event.data.new;
@@ -165,6 +160,25 @@ module.exports.handleUpdateMatters = async (body) => {
         }
       }
     }
+
+    const d_contacts = await alloyDBClient.query(
+      `
+        SELECT contact_vector from contacts where matter_id=$1;
+      `,
+      [data.id]
+    );
+    for (let val of d_contacts.rows) {
+      const choose_email = await alloyDBClient.query(
+        `SELECT $1 <-> email_contact_vector
+        from emails
+        where user_id = (select uuid from users where organization_id=(select organization_id from contacts where matter_id=$2))
+        ORDER BY score
+        LIMIT 1;
+        `,
+        [val.contact_vector, data.id]
+      );
+    }
+
     await alloyDBClient.endPool();
 
     return { status: "ok", op: "update" };
