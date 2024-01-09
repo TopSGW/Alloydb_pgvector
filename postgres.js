@@ -1,6 +1,8 @@
 const { SecretManagerServiceClient } = require("@google-cloud/secret-manager");
 const { Pool } = require("pg");
 
+let sslCertificate;
+
 const getSSLCertificate = async () => {
   const client = new SecretManagerServiceClient();
 
@@ -12,6 +14,8 @@ const getSSLCertificate = async () => {
   return payload;
 };
 
+await getSSLCertificate().then((result) => (sslCertificate = result));
+
 const pool = new Pool({
   user: process.env.ALLOY_DB_USER,
   host: process.env.ALLOY_DB_HOST,
@@ -19,16 +23,12 @@ const pool = new Pool({
   password: process.env.ALLOY_DB_PASSWORD,
   port: process.env.ALLOY_DB_PORT || 5432,
   ssl: {
-    ca: async () => await getSSLCertificate(),
+    ca: sslCertificate,
     rejectUnauthorized: true,
     checkServerIdentity: () => {
       return null;
     },
   },
-});
-
-pool.on("error", (err, client) => {
-  console.error("Unexpected error on idle client", err);
 });
 
 const getAlloyDBClient = async () => {
