@@ -134,7 +134,7 @@ module.exports.handleUpdateMatters = async (body) => {
                                                         FROM matters
                                                         WHERE id = $1
                                                         LIMIT 1)
-                               LIMIT 1) < 1 AND emails.category='Legal'
+                               LIMIT 1) < 1 AND emails.email_category='Legal'
         ORDER BY score DESC;      
       `,
       [data.id]
@@ -197,7 +197,7 @@ module.exports.handleInsertMatters = async (body) => {
                                                         FROM matters
                                                         WHERE id = $1
                                                         LIMIT 1)
-                               LIMIT 1) < 1 AND emails.category='Legal'
+                               LIMIT 1) < 1 AND emails.email_category='Legal'
         ORDER BY score DESC;      
       `,
       [data.id]
