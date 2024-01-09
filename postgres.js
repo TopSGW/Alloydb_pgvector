@@ -139,16 +139,18 @@ module.exports.handleUpdateMatters = async (body) => {
       `,
       [data.id]
     );
-    for (let val of c_matters.rows) {
-      let k_val = await alloyDBClient.query(
-        `SELECT score from confidence_score where email_id=$1;`,
-        [val.email_id]
-      );
-      if (k_val.rows.length > 0 && k_val.rows[0].score < val.score) {
-        await alloyDBClient.query(
-          `UPDATE confidence_score set matter_id=$1, score=$2 where email_id=$3`,
-          [data.id, val.score, val.email_id]
+    if (c_matters.rowCount) {
+      for (let val of c_matters.rows) {
+        let k_val = await alloyDBClient.query(
+          `SELECT score from confidence_score where email_id=$1;`,
+          [val.email_id]
         );
+        if (k_val.rows.length > 0 && k_val.rows[0].score < val.score) {
+          await alloyDBClient.query(
+            `UPDATE confidence_score set matter_id=$1, score=$2 where email_id=$3`,
+            [data.id, val.score, val.email_id]
+          );
+        }
       }
     }
     await alloyDBClient.endPool();
@@ -202,19 +204,20 @@ module.exports.handleInsertMatters = async (body) => {
       `,
       [data.id]
     );
-    for (let val of c_matters) {
-      let k_val = await alloyDBClient.query(
-        `SELECT score from confidence_score where email_id=$1;`,
-        [val.email_id]
-      );
-      if (k_val.rows.length > 0 && k_val.rows[0].score < val.score) {
-        await alloyDBClient.query(
-          `UPDATE confidence_score set matter_id=$1, score=$2 where email_id=$3`,
-          [data.id, val.score, val.email_id]
+    if (c_matters.rowCount) {
+      for (let val of c_matters) {
+        let k_val = await alloyDBClient.query(
+          `SELECT score from confidence_score where email_id=$1;`,
+          [val.email_id]
         );
+        if (k_val.rows.length > 0 && k_val.rows[0].score < val.score) {
+          await alloyDBClient.query(
+            `UPDATE confidence_score set matter_id=$1, score=$2 where email_id=$3`,
+            [data.id, val.score, val.email_id]
+          );
+        }
       }
     }
-
     await alloyDBClient.endPool();
 
     return { status: "ok", op: "insert" };
