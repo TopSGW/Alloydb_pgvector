@@ -119,6 +119,38 @@ module.exports.handleUpdateMatters = async (body) => {
       `,
       [data.id]
     );
+    const c_matters = await alloyDBClient.query(
+      `
+        SELECT uuid as email_id,
+        (1 - (email_vector <=> (SELECT matter_vector
+                              FROM matters
+                              WHERE id = $1
+                              LIMIT 1))) * 100 as score
+        FROM emails
+        WHERE email_contact_vector <-> (SELECT contact_vector
+                               FROM contacts
+                               WHERE matter_id = $1
+                                 AND organization_id = (SELECT organization_id
+                                                        FROM matters
+                                                        WHERE id = $1
+                                                        LIMIT 1)
+                               LIMIT 1) < 1 AND emails.category='Legal'
+        ORDER BY score DESC;      
+      `,
+      [data.id]
+    );
+    for (let val of c_matters.rows) {
+      let k_val = await alloyDBClient.query(
+        `SELECT score from confidence_score where email_id=$1;`,
+        [val.email_id]
+      );
+      if (k_val.rows.length > 0 && k_val.rows[0].score < val.score) {
+        await alloyDBClient.query(
+          `UPDATE confidence_score set matter_id=$1, score=$2 where email_id=$3`,
+          [data.id, val.score, val.email_id]
+        );
+      }
+    }
     await alloyDBClient.endPool();
 
     return { status: "ok", op: "update" };
@@ -150,6 +182,39 @@ module.exports.handleInsertMatters = async (body) => {
       `,
       [data.id]
     );
+    const c_matters = await alloyDBClient.query(
+      `
+        SELECT uuid as email_id,
+        (1 - (email_vector <=> (SELECT matter_vector
+                              FROM matters
+                              WHERE id = $1
+                              LIMIT 1))) * 100 as score
+        FROM emails
+        WHERE email_contact_vector <-> (SELECT contact_vector
+                               FROM contacts
+                               WHERE matter_id = $1
+                                 AND organization_id = (SELECT organization_id
+                                                        FROM matters
+                                                        WHERE id = $1
+                                                        LIMIT 1)
+                               LIMIT 1) < 1 AND emails.category='Legal'
+        ORDER BY score DESC;      
+      `,
+      [data.id]
+    );
+    for (let val of c_matters) {
+      let k_val = await alloyDBClient.query(
+        `SELECT score from confidence_score where email_id=$1;`,
+        [val.email_id]
+      );
+      if (k_val.rows.length > 0 && k_val.rows[0].score < val.score) {
+        await alloyDBClient.query(
+          `UPDATE confidence_score set matter_id=$1, score=$2 where email_id=$3`,
+          [data.id, val.score, val.email_id]
+        );
+      }
+    }
+
     await alloyDBClient.endPool();
 
     return { status: "ok", op: "insert" };
@@ -182,6 +247,52 @@ module.exports.handleUpdateEmails = async (body) => {
       `,
       [data.uuid]
     );
+    const matchingMatterId = await alloyDBClient.query(
+      `
+        SELECT id
+        FROM matters
+        WHERE organization_id = (SELECT organization_id
+                                FROM users
+                                WHERE uuid = (SELECT emails.user_id
+                                              FROM emails
+                                              WHERE emails.uuid = $1 
+                                                and emails.email_category = 'Legal'))
+          AND id IN
+              (SELECT matter_id
+              FROM contacts
+              WHERE contact_vector <->
+                    (SELECT email_contact_vector
+                      FROM emails
+                      WHERE emails.uuid = $1) < 1)
+        ORDER BY matter_vector <->
+                (SELECT email_vector
+                  FROM emails
+                  WHERE emails.uuid = $1)
+        LIMIT 1;
+      `,
+      [data.uuid]
+    );
+    if (!matchingMatterId.rowCount) {
+      const score = await alloyDBClient.query(
+        `
+          SELECT (1 - (email_vector <=> matter_vector)) * 100 as score
+          FROM matters,
+              emails
+          WHERE emails.uuid = $1
+            and matters.id = $2;
+        `,
+        [data.uuid, matchingMatterId.rows[0].id]
+      );
+      await alloyDBClient.query(
+        `
+          UPDATE confidence_score
+          set matter_id=$1,
+              score=$2
+          WHERE email_id = $3;
+        `,
+        [matchingMatterId.rows[0].id, score.rows[0].score, data.uuid]
+      );
+    }
     await alloyDBClient.endPool();
 
     return { status: "ok", op: "update" };
@@ -192,52 +303,93 @@ module.exports.handleUpdateEmails = async (body) => {
 };
 
 module.exports.handleInsertEmails = async (body) => {
-  // try {
-  const data = body.event.data.new;
-  console.log(`uuid: ${data.uuid}`);
-  const alloyDBClient = getAlloyDBClient();
-  console.log("alloyDBClient", alloyDBClient);
-  await alloyDBClient.query(
-    `
-        UPDATE emails
-        SET email_vector = embedding('textembedding-gecko@003',
-                            CONCAT(E'Email info \n\n', 'sender: ', sender, 
-                              E'\n', 'email_id: ', email_id, 
-                              E'\n', 'recipient: ', recipient, 
-                              E'\n', 'Subject: ', subject, 
-                              E'\n', 'Body: ', body,
-                              E'\n', 'reasonning: ', reasoning, 
-                              E'\n', 'date ', date
+  try {
+    const data = body.event.data.new;
+    console.log(data.uuid);
+    const alloyDBClient = getAlloyDBClient();
+    await alloyDBClient.query(
+      `
+          UPDATE emails
+          SET email_vector = embedding('textembedding-gecko@003',
+                              CONCAT(E'Email info \n\n', 'sender: ', sender, 
+                                E'\n', 'email_id: ', email_id, 
+                                E'\n', 'recipient: ', recipient, 
+                                E'\n', 'Subject: ', subject, 
+                                E'\n', 'Body: ', body,
+                                E'\n', 'reasonning: ', reasoning, 
+                                E'\n', 'date ', date
+                              )
                             )
-                          )
-        WHERE uuid = $1;
-      `,
-    [data.uuid]
-  );
-  console.log("data.uuid", data.uuid);
-  await alloyDBClient.query(
-    `
-        UPDATE emails
-        SET email_contact_vector = embedding('textembedding-gecko@003',
-                                    CONCAT(E'Email info\n\n', 'Sender: ', sender, 
-                                        E'\n', 'email_id: ', email_id, 
-                                        E'\n', 'Recipient: ', recipient, 
-                                        E'\n'
+          WHERE uuid = $1;
+        `,
+      [data.uuid]
+    );
+    console.log("data.uuid", data.uuid);
+    await alloyDBClient.query(
+      `
+          UPDATE emails
+          SET email_contact_vector = embedding('textembedding-gecko@003',
+                                      CONCAT(E'Email info\n\n', 'Sender: ', sender, 
+                                          E'\n', 'email_id: ', email_id, 
+                                          E'\n', 'Recipient: ', recipient, 
+                                          E'\n'
+                                      )
                                     )
-                                  )
-        WHERE uuid = $1;
+          WHERE uuid = $1;
+        `,
+      [data.uuid]
+    );
+    const matchingMatterId = await alloyDBClient.query(
+      `
+        SELECT id
+        FROM matters
+        WHERE organization_id = (SELECT organization_id
+                                FROM users
+                                WHERE uuid = (SELECT emails.user_id
+                                              FROM emails
+                                              WHERE emails.uuid = $1 
+                                                and emails.email_category = 'Legal'))
+          AND id IN
+              (SELECT matter_id
+              FROM contacts
+              WHERE contact_vector <->
+                    (SELECT email_contact_vector
+                      FROM emails
+                      WHERE emails.uuid = $1) < 1)
+        ORDER BY matter_vector <->
+                (SELECT email_vector
+                  FROM emails
+                  WHERE emails.uuid = $1)
+        LIMIT 1;
       `,
-    [data.uuid]
-  );
+      [data.uuid]
+    );
+    if (!matchingMatterId.rowCount) {
+      const score = await alloyDBClient.query(
+        `
+          SELECT (1 - (email_vector <=> matter_vector)) * 100 as score
+          FROM matters,
+              emails
+          WHERE emails.uuid = $1
+            and matters.id = $2;
+        `,
+        [data.uuid, matchingMatterId.rows[0].id]
+      );
+      await alloyDBClient.query(
+        `
+          INSERT INTO confidence_score(email_id, matter_id, score)
+          values($1, $2, $3);        
+        `,
+        [data.uuid, matchingMatterId.rows[0].id, score.rows[0].score]
+      );
+    }
+    await alloyDBClient.endPool();
 
-  console.log("data.uuid1", data.uuid);
-  await alloyDBClient.endPool();
-
-  return { status: "ok", op: "insert" };
-  // } catch (error) {
-  //   console.log(error);
-  //   throw new Error(error);
-  // }
+    return { status: "ok", op: "insert" };
+  } catch (error) {
+    console.log(error);
+    throw new Error(error);
+  }
 };
 
 //Contacts
