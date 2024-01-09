@@ -22,7 +22,7 @@ const getAlloyDBClient = async () => {
     password: process.env.ALLOY_DB_PASSWORD,
     port: process.env.ALLOY_DB_PORT || 5432,
     ssl: {
-      ca: fs.readFileSync("/home/daniil_nikolaev/tempello.crt").toString(),
+      ca: fs.readFileSync("/home/daniil_nikolaev/my-domain.crt").toString(),
       rejectUnauthorized: true,
       checkServerIdentity: () => {
         return null;
