@@ -1,5 +1,6 @@
 const { SecretManagerServiceClient } = require("@google-cloud/secret-manager");
 const { Pool } = require("pg");
+const fs = require("fs");
 
 const getSSLCertificate = async () => {
   const client = new SecretManagerServiceClient();
@@ -21,7 +22,7 @@ const getAlloyDBClient = async () => {
     password: process.env.ALLOY_DB_PASSWORD,
     port: process.env.ALLOY_DB_PORT || 5432,
     ssl: {
-      ca: SSLCertificate,
+      ca: fs.readFileSync("/home/daniil_nikolaev/tempello.crt").toString(),
       rejectUnauthorized: true,
       checkServerIdentity: () => {
         return null;
