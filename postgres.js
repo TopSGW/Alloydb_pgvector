@@ -12,6 +12,9 @@ const getSSLCertificate = async () => {
   SSLCertificate = version.payload.data.toString("utf8");
 };
 
+console.log(
+  `projects/${process.env.projectId}/secrets/${process.env.secretId}/versions/latest`
+);
 getSSLCertificate().catch(console.error);
 
 const pool = new Pool({
