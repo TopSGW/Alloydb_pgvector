@@ -1,7 +1,6 @@
 const { SecretManagerServiceClient } = require("@google-cloud/secret-manager");
 const { Pool } = require("pg");
 
-let SSLCertificate = "";
 const getSSLCertificate = async () => {
   const client = new SecretManagerServiceClient();
 
@@ -9,14 +8,9 @@ const getSSLCertificate = async () => {
     name: `projects/${process.env.projectId}/secrets/${process.env.secretId}/versions/latest`,
   });
 
-  SSLCertificate = version.payload.data.toString("utf8");
+  const payload = version.payload.data.toString("utf8");
+  return payload;
 };
-
-console.log(
-  `projects/${process.env.projectId}/secrets/${process.env.secretId}/versions/latest`
-);
-getSSLCertificate().catch(console.error);
-console.log(SSLCertificate);
 
 const pool = new Pool({
   user: process.env.ALLOY_DB_USER,
@@ -25,7 +19,7 @@ const pool = new Pool({
   password: process.env.ALLOY_DB_PASSWORD,
   port: process.env.ALLOY_DB_PORT || 5432,
   ssl: {
-    ca: SSLCertificate,
+    ca: async () => await getSSLCertificate(),
     rejectUnauthorized: true,
     checkServerIdentity: () => {
       return null;
