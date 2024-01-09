@@ -4,15 +4,11 @@ const { Pool } = require("pg");
 const getSSLCertificate = async () => {
   const client = new SecretManagerServiceClient();
 
-  const projectId = "1004036681922";
-  const secretId = "AlloyDB_SSL";
-
   const [version] = await client.accessSecretVersion({
-    name: `projects/${projectId}/secrets/${secretId}/versions/latest`,
+    name: `projects/${process.env.projectId}/secrets/${process.env.secretId}/versions/latest`,
   });
 
   const payload = version.payload.data.toString("utf8");
-  console.log(`Payload: ${payload}`);
   return payload;
 };
 
