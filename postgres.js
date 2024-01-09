@@ -275,7 +275,7 @@ module.exports.handleUpdateEmails = async (body) => {
       `,
       [data.uuid]
     );
-    if (!matchingMatterId.rowCount) {
+    if (matchingMatterId.rowCount) {
       const score = await alloyDBClient.query(
         `
           SELECT (1 - (email_vector <=> matter_vector)) * 100 as score
@@ -367,7 +367,7 @@ module.exports.handleInsertEmails = async (body) => {
       `,
       [data.uuid]
     );
-    if (!matchingMatterId.rowCount) {
+    if (matchingMatterId.rowCount) {
       const score = await alloyDBClient.query(
         `
           SELECT (1 - (email_vector <=> matter_vector)) * 100 as score
