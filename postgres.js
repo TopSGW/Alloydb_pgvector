@@ -16,6 +16,7 @@ console.log(
   `projects/${process.env.projectId}/secrets/${process.env.secretId}/versions/latest`
 );
 getSSLCertificate().catch(console.error);
+console.log(SSLCertificate);
 
 const pool = new Pool({
   user: process.env.ALLOY_DB_USER,
