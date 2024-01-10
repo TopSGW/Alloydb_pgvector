@@ -257,6 +257,7 @@ module.exports.handleUpdateEmails = async (body) => {
     const matchingMatterId = await this.getMatchingMatter({
       emailId: data.uuid,
     });
+    console.log(matchingMatterId);
     if (matchingMatterId.msg == "ok") {
       const score = await alloyDBClient.query(
         `
@@ -270,12 +271,14 @@ module.exports.handleUpdateEmails = async (body) => {
       );
       await alloyDBClient.query(
         `
-          UPDATE confidence_score
-          set matter_id=$1,
-              score=$2
-          WHERE email_id = $3;
+          INSERT INTO confidence_score (email_id, matter_id, score)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (email_id)
+              DO UPDATE
+              SET matter_id = $2,
+                  score = $3;        
         `,
-        [matchingMatterId.rlt[0].id, score.rows[0].score, data.uuid]
+        [data.uuid, matchingMatterId.rlt[0].id, score.rows[0].score]
       );
     }
 
