@@ -208,7 +208,7 @@ module.exports.handleInsertMatters = async (body) => {
 
 module.exports.handleDeleteMatters = async (body) => {
   try {
-    const data = body.event.data.new;
+    const data = body.event.data.old;
     await getMatchingScore({ matterId: data.id });
   } catch (error) {
     console.log(error);
@@ -363,7 +363,7 @@ module.exports.handleInsertEmails = async (body) => {
 
 module.exports.handleDeleteEmails = async (body) => {
   try {
-    const data = body.event.data.new;
+    const data = body.event.data.old;
     alloyDBClient.query(
       `
         DELETE FROM confidence_score WHERE email_id=$1;
