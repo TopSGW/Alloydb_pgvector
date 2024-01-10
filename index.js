@@ -6,6 +6,8 @@ const {
   handleInsertMatters,
   handleInsertContacts,
   handleUpdateContacts,
+  handleDeleteEmails,
+  handleDeleteMatters,
 } = require("./postgres.js");
 const express = require("express");
 
@@ -22,12 +24,20 @@ app.post("/handleUpdateEmails", async (req, res) => {
   res.status(200).send(await handleUpdateEmails(req.body));
 });
 
+app.post("/handleDeleteEmails", async (req, res) => {
+  res.status(200).send(await handleDeleteEmails(req.body));
+});
+
 app.post("/handleInsertMatters", async (req, res) => {
   res.status(200).send(await handleInsertMatters(req.body));
 });
 
 app.post("/handleUpdateMatters", async (req, res) => {
   res.status(200).send(await handleUpdateMatters(req.body));
+});
+
+app.post("/handleDeleteMatters", async (req, res) => {
+  res.status(200).send(await handleDeleteMatters(req.body));
 });
 
 app.post("/handleInsertContacts", async (req, res) => {
