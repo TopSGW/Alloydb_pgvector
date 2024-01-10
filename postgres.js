@@ -280,8 +280,14 @@ module.exports.handleUpdateEmails = async (body) => {
         `,
         [data.uuid, matchingMatterId.rlt[0].id, score.rows[0].score]
       );
+    } else {
+      await alloyDBClient.query(
+        `
+          DELETE FROM confidence_score WHERE email_id=$1;
+        `,
+        [data.uuid]
+      );
     }
-
     return { status: "ok", op: "update" };
   } catch (error) {
     console.log(error);
