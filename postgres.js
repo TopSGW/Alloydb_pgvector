@@ -114,7 +114,7 @@ const getMatchingScore = async (body) => {
     [matterId]
   );
   if (matchingEmails.rowCount) {
-    for (let val of matchingEmails) {
+    for (let val of matchingEmails.rows) {
       const matchingMatterId = await this.getMatchingMatter({
         emailId: val.email_id,
       });
