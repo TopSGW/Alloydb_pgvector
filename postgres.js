@@ -1,19 +1,21 @@
 const { SecretManagerServiceClient } = require("@google-cloud/secret-manager");
 const { Pool } = require("pg");
 
-const getSSLCertificate = async () => {
-  const client = new SecretManagerServiceClient();
+let alloyDBClient;
+(async () => {
+  const getSSLCertificate = async () => {
+    const client = new SecretManagerServiceClient();
 
-  const [version] = await client.accessSecretVersion({
-    name: `projects/${process.env.projectId}/secrets/${process.env.secretId}/versions/latest`,
-  });
+    const [version] = await client.accessSecretVersion({
+      name: `projects/${process.env.projectId}/secrets/${process.env.secretId}/versions/latest`,
+    });
 
-  const payload = version.payload.data.toString("utf8");
-  return payload;
-};
+    const payload = version.payload.data.toString("utf8");
+    return payload;
+  };
 
-const getAlloyDBClient = async () => {
-  const SSLCertificate = await getSSLCertificate();
+  const sslCertificate = await getSSLCertificate();
+
   const pool = new Pool({
     user: process.env.ALLOY_DB_USER,
     host: process.env.ALLOY_DB_HOST,
@@ -21,7 +23,7 @@ const getAlloyDBClient = async () => {
     password: process.env.ALLOY_DB_PASSWORD,
     port: process.env.ALLOY_DB_PORT || 5432,
     ssl: {
-      ca: SSLCertificate,
+      ca: sslCertificate,
       rejectUnauthorized: true,
       checkServerIdentity: () => {
         return null;
@@ -33,11 +35,8 @@ const getAlloyDBClient = async () => {
     console.error("Unexpected error on idle client", err);
   });
 
-  const connection = {
+  alloyDBClient = {
     pool,
-    endPool: async () => {
-      await pool.end();
-    },
     query: async (text, params) => {
       const client = await pool.connect();
 
@@ -51,16 +50,11 @@ const getAlloyDBClient = async () => {
       }
     },
   };
-
-  return connection;
-};
-
-const alloyDBClient = await getAlloyDBClient();
+})();
 
 module.exports.getMatchingMatter = async (body) => {
   try {
     const { emailId } = body;
-    const alloyDBClient = await getAlloyDBClient();
     const orgId = await alloyDBClient.query(
       `
         SELECT organization_id
@@ -110,7 +104,6 @@ module.exports.getMatchingMatter = async (body) => {
 module.exports.handleUpdateMatters = async (body) => {
   try {
     const data = body.event.data.new;
-    const alloyDBClient = await getAlloyDBClient();
     await alloyDBClient.query(
       `
         UPDATE matters
@@ -173,7 +166,6 @@ module.exports.handleUpdateMatters = async (body) => {
 module.exports.handleInsertMatters = async (body) => {
   try {
     const data = body.event.data.new;
-    const alloyDBClient = await getAlloyDBClient();
     await alloyDBClient.query(
       `
         UPDATE matters
@@ -313,7 +305,6 @@ module.exports.handleUpdateEmails = async (body) => {
 module.exports.handleInsertEmails = async (body) => {
   try {
     const data = body.event.data.new;
-    const alloyDBClient = await getAlloyDBClient();
     await alloyDBClient.query(
       `
           UPDATE emails
@@ -402,7 +393,6 @@ module.exports.handleInsertEmails = async (body) => {
 module.exports.handleUpdateContacts = async (body) => {
   try {
     const data = body.event.data.new;
-    const alloyDBClient = await getAlloyDBClient();
     await alloyDBClient.query(
       `
         UPDATE contacts
@@ -428,7 +418,6 @@ module.exports.handleUpdateContacts = async (body) => {
 module.exports.handleInsertContacts = async (body) => {
   try {
     const data = body.event.data.new;
-    const alloyDBClient = await getAlloyDBClient();
     await alloyDBClient.query(
       `
         UPDATE contacts

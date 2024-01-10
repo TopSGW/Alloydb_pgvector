@@ -6,7 +6,7 @@ const {
   handleInsertMatters,
   handleInsertContacts,
   handleUpdateContacts,
-} = require("./postgres.mjs");
+} = require("./postgres.js");
 const express = require("express");
 
 const app = express();
