@@ -130,7 +130,7 @@ async function handleMatchingEmail(matterId) {
 
 module.exports.handleBatchEmail = async () => {
   await alloyDBClient.query("TRUNCATE test_time_entries;");
-  const matterlist = await alloyDBClient.query("SELECT id FROM matters;");
+  const matterlist = await alloyDBClient.query(`SELECT id FROM matters;`);
   for (let val of matterlist.rows) {
     await handleMatchingEmail(val.id);
   }
