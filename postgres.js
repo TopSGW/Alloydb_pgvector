@@ -111,7 +111,7 @@ async function handleMatchingEmail(matterId) {
       where emails.email_category = 'Legal'
         and user_id in
             (select uuid from users where organization_id = (select organization_id from matters where id = $1))
-        and cosine_distance(email_vector, (select matter_vector from matters where id=1582157810)) <= 0.2
+        and cosine_distance(email_vector, (select matter_vector from matters where id=$1)) <= 0.2
       order by date;
     `,
     [matterId]
@@ -123,7 +123,7 @@ async function handleMatchingEmail(matterId) {
         INSERT INTO test_time_entries(matter_id, email_id, score)
         VALUES ($1, $2, $3);
       `,
-      [matterId, val.emailId, val.score]
+      [matterId, val.email_id, val.score]
     );
   }
 }
