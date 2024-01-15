@@ -130,7 +130,7 @@ async function handleMatchingEmail(matterId) {
     );
     vis[val.email_id] = 1;
   }
-  for (let dval of emails) {
+  for (let dval of emails.rows) {
     if (vis[dval.email_id] != 1) {
       await alloyDBClient.query(
         `
