@@ -111,7 +111,7 @@ async function handleMatchingEmail(matterId) {
       where emails.email_category = 'Legal'
         and user_id in
             (select uuid from users where organization_id = (select organization_id from matters where id = $1))
-        and cosine_distance(email_vector, (select matter_vector from matters where id=1582157810)) <= 0.1
+        and cosine_distance(email_vector, (select matter_vector from matters where id=1582157810)) <= 0.2
       order by date;
     `,
     [matterId]
@@ -129,8 +129,8 @@ async function handleMatchingEmail(matterId) {
 }
 
 module.exports.handleBatchEmail = async () => {
-  alloyDBClient.query("TRUNCATE test_time_entries;");
-  const matterlist = alloyDBClient.query("SELECT id FROM matters;");
+  await alloyDBClient.query("TRUNCATE test_time_entries;");
+  const matterlist = await alloyDBClient.query("SELECT id FROM matters;");
   for (let val of matterlist.rows) {
     await handleMatchingEmail(val.id);
   }
