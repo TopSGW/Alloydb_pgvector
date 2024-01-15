@@ -51,6 +51,7 @@ let alloyDBClient;
       }
     },
   };
+  await alloyDBClient.query(`SELECT 1;`);
 })();
 
 module.exports.getMatchingMatter = async (body) => {
