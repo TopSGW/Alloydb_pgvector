@@ -8,6 +8,7 @@ const {
   handleUpdateContacts,
   handleDeleteEmails,
   handleDeleteMatters,
+  handleBatchEmail,
 } = require("./postgres.js");
 const express = require("express");
 
@@ -48,6 +49,9 @@ app.post("/handleUpdateContacts", async (req, res) => {
   res.status(200).send(await handleUpdateContacts(req.body));
 });
 
+app.post("/handleBatchEmail", async (_, res) => {
+  res.status(200).send(await handleBatchEmail());
+});
 app.listen(3000, () => {
   console.log("Server running on 3000");
 });
