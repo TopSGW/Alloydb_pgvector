@@ -24,7 +24,7 @@ let alloyDBClient;
     password: process.env.ALLOY_DB_PASSWORD,
     port: process.env.ALLOY_DB_PORT || 5432,
     ssl: {
-      ca: fs.readFileSync("/home/daniil_nikolaev/ver2.crt"),
+      ca: sslCertificate,
       rejectUnauthorized: true,
       checkServerIdentity: () => {
         return null;
@@ -99,6 +99,38 @@ module.exports.getMatchingMatter = async (body) => {
   } catch (error) {
     console.log(error);
     throw new Error(error);
+  }
+};
+
+async function handleMatchingEmail(matterId) {
+  const email_list = await alloyDBClient.query(
+    `
+      select uuid as email_id, (1 - cosine_distance(email_vector, (select matter_vector from matters where id=$1))) * 100 as score, date
+      from emails
+      where emails.email_category = 'Legal'
+        and user_id in
+            (select uuid from users where organization_id = (select organization_id from matters where id = $1))
+        and cosine_distance(email_vector, (select matter_vector from matters where id=1582157810)) <= 0.1
+      order by date;
+    `,
+    [matterId]
+  );
+  for (let val of email_list.rows) {
+    await alloyDBClient.query(
+      `
+        INSERT INTO test_time_entries(matter_id, email_id, score)
+        VALUES ($1, $2, $3);
+      `,
+      [matterId, val.emailId, val.score]
+    );
+  }
+}
+
+module.exports.handleBatchEmail = async () => {
+  alloyDBClient.query("TRUNCATE test_time_entries;");
+  const matterlist = alloyDBClient.query("SELECT id FROM matters;");
+  for (let val of matterlist) {
+    await handleMatchingEmail(val.rows[0].id);
   }
 };
 
