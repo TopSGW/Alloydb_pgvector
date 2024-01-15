@@ -111,30 +111,42 @@ async function handleMatchingEmail(matterId) {
       where emails.email_category = 'Legal'
         and user_id in
             (select uuid from users where organization_id = (select organization_id from matters where id = $1))
-        and cosine_distance(email_vector, (select matter_vector from matters where id=$1)) <= 0.2
+        and cosine_distance(email_vector, (select matter_vector from matters where id=$1)) <= 0.3
       order by date;
     `,
     [matterId]
   );
-  console.log(email_list.rows);
+  const emails = alloyDBClient.query("SELECT email_id from test_time_entries;");
+  let vis = [];
   for (let val of email_list.rows) {
     await alloyDBClient.query(
       `
         INSERT INTO test_time_entries(matter_id, email_id, score)
-        VALUES ($1, $2, $3);
+        VALUES ($1, $2, $3)
+        ON CONFLICT(matter_id, email_id)
+        DO UPDATE SET email_id = EXCLUDED.email_id, score = EXCLUDED.score;
       `,
       [matterId, val.email_id, val.score]
     );
+    vis[val.email_id] = 1;
+  }
+  for (let dval of emails) {
+    if (vis[dval.email_id] != 1) {
+      await alloyDBClient.query(
+        `
+          DELETE from test_time_entries where matter_id = $1 and email_id = $2;
+        `,
+        [matterId, dval.email_id]
+      );
+    }
   }
 }
 
 module.exports.handleBatchEmail = async () => {
-  await alloyDBClient.query("TRUNCATE test_time_entries;");
-  const matterlist = await alloyDBClient.query(`SELECT id FROM matters;`);
+  const matterlist = await alloyDBClient.query("SELECT id FROM matters;");
   for (let val of matterlist.rows) {
     await handleMatchingEmail(val.id);
   }
-  return { sucess: "ok" };
 };
 
 const getMatchingScore = async (body) => {
