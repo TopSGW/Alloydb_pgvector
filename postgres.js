@@ -116,7 +116,9 @@ async function handleMatchingEmail(matterId) {
     `,
     [matterId]
   );
-  const emails = alloyDBClient.query("SELECT email_id from test_time_entries;");
+  const emails = await alloyDBClient.query(
+    "SELECT email_id from test_time_entries;"
+  );
   let vis = [];
   for (let val of email_list.rows) {
     await alloyDBClient.query(
