@@ -116,7 +116,7 @@ async function handleMatchingEmail(matterId) {
     `,
     [matterId]
   );
-  console.log(email_list);
+  console.log(email_list.rows);
   for (let val of email_list.rows) {
     await alloyDBClient.query(
       `
