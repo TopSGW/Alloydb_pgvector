@@ -134,6 +134,7 @@ module.exports.handleBatchEmail = async () => {
   for (let val of matterlist) {
     await handleMatchingEmail(val.rows[0].id);
   }
+  return { sucess: "ok" };
 };
 
 const getMatchingScore = async (body) => {
