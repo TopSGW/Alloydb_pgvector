@@ -104,44 +104,100 @@ module.exports.getMatchingMatter = async (body) => {
 };
 
 async function handleMatchingEmail(matterId) {
-  const email_list = await alloyDBClient.query(
+  let visit_emails = [],
+    flag = true;
+  while (flag) {
+    const vector_infos = await alloyDBClient.query(
+      `
+        SELECT 1 
+        FROM matterVectors 
+        WHERE matter_id = $1;
+      `,
+      [matterId]
+    );
+    if (!vector_infos.rowCount) {
+      await alloyDBClient.query(
+        `
+          INSERT INTO matterVectors(matter_id, matter_vector)
+          VALUES ($1, (SELECT matter_vector from matters where id = $1));
+        `,
+        [matterId]
+      );
+    }
+    const email_list = await alloyDBClient.query(
+      `
+        select uuid as email_id
+        from emails
+        where emails.email_category = 'Legal'
+          and user_id in
+              (select uuid from users where organization_id = (select organization_id from matters where id = $1))
+          and cosine_distance(email_vector, (select matter_vector from matters where id=$1)) <= 0.1
+        order by date;
+      `,
+      [matterId]
+    );
+    const emails = await alloyDBClient.query(
+      "SELECT email_id from test_time_entries;"
+    );
+    let vis = [];
+    if (!email_list.rowCount) flag = false;
+    for (let val of email_list.rows) {
+      if (visit_emails[val.email_id] == 1) {
+        flag = false;
+        break;
+      }
+      let scores = await alloyDBClient.query(
+        `
+          SELECT (1 - cosine_distance(email_vector, (select matter_vector from matterVectors where matter_id = $1))) * 100 as score
+          FROM emails
+          WHERE uuid=$2;
+        `,
+        [matterId, val.email_id]
+      );
+      await alloyDBClient.query(
+        `
+          INSERT INTO test_time_entries(matter_id, email_id, score)
+          VALUES ($1, $2, $3)
+          ON CONFLICT(matter_id, email_id)
+          DO UPDATE SET email_id = EXCLUDED.email_id, score = EXCLUDED.score;
+        `,
+        [matterId, val.email_id, scores.rows[0].score]
+      );
+      vis[val.email_id] = 1;
+      visit_emails[val.email_id] = 1;
+      await alloyDBClient.query(
+        `
+          UPDATE matterVectors SET matter_vector = CONCAT(matter_vector, (select email_vector from emails where uuid=$1));
+        `,
+        [val.email_id]
+      );
+    }
+    for (let dval of emails.rows) {
+      if (vis[dval.email_id] != 1 && flag) {
+        await alloyDBClient.query(
+          `
+            DELETE from test_time_entries where matter_id = $1 and email_id = $2;
+          `,
+          [matterId, dval.email_id]
+        );
+      }
+    }
+  }
+  const bestscore = await alloyDBClient.query(
     `
-      select uuid as email_id, (1 - cosine_distance(email_vector, (select matter_vector from matters where id=$1))) * 100 as score, date
-      from emails
-      where emails.email_category = 'Legal'
-        and user_id in
-            (select uuid from users where organization_id = (select organization_id from matters where id = $1))
-        and cosine_distance(email_vector, (select matter_vector from matters where id=$1)) <= 0.2
-      order by date;
+      SELECT MAX(score) as best_score, email_id from test_time_entries WHERE matter_id = $1;
     `,
     [matterId]
   );
-  const emails = await alloyDBClient.query(
-    "SELECT email_id from test_time_entries;"
+  console.log("bestscore: ", bestscore);
+  await alloyDBClient.query(
+    `
+      INSERT INTO confidence_score(matter_id, email_id, score) VALUES ($1,$2,$3)
+      ON CONFLICT (email_id)
+      DO UPDATE SET matter_id=$1, score=$3;    
+    `,
+    [matterId, bestscore.rows[0].email_id, bestscore.rows[0].best_score]
   );
-  let vis = [];
-  for (let val of email_list.rows) {
-    await alloyDBClient.query(
-      `
-        INSERT INTO test_time_entries(matter_id, email_id, score)
-        VALUES ($1, $2, $3)
-        ON CONFLICT(matter_id, email_id)
-        DO UPDATE SET email_id = EXCLUDED.email_id, score = EXCLUDED.score;
-      `,
-      [matterId, val.email_id, val.score]
-    );
-    vis[val.email_id] = 1;
-  }
-  for (let dval of emails.rows) {
-    if (vis[dval.email_id] != 1) {
-      await alloyDBClient.query(
-        `
-          DELETE from test_time_entries where matter_id = $1 and email_id = $2;
-        `,
-        [matterId, dval.email_id]
-      );
-    }
-  }
 }
 
 module.exports.handleBatchEmail = async () => {
