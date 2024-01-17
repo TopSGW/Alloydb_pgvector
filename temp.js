@@ -7,7 +7,7 @@ let alloyDBClient;
     const client = new SecretManagerServiceClient();
 
     const [version] = await client.accessSecretVersion({
-      name: `projects/${process.env.projectId}/secrets/${process.env.secretId}/versions/latest`,
+      name: `projects/${process.env.PROJECT_ID}/secrets/${process.env.ALLOY_DB_ROOT_CERT_SECRET_NAME}/versions/latest`,
     });
 
     const payload = version.payload.data.toString("utf8");
@@ -42,8 +42,112 @@ let alloyDBClient;
       }
     },
   };
+  await alloyDBClient.query(`SELECT 1;`);
 })();
 
+async function handleMatchingEmail(matterId) {
+  let visit_emails = [],
+    flag = true;
+  while (flag) {
+    const vector_infos = await alloyDBClient.query(
+      `
+        SELECT 1 
+        FROM matterVectors 
+        WHERE matter_id = $1;
+      `,
+      [matterId]
+    );
+    if (!vector_infos.rowCount) {
+      await alloyDBClient.query(
+        `
+          INSERT INTO matterVectors(matter_id, matter_vector)
+          VALUES ($1, (SELECT matter_vector from matters where id = $1));
+        `,
+        [matterId]
+      );
+    }
+    const email_list = await alloyDBClient.query(
+      `
+        select uuid as email_id
+        from emails
+        where emails.email_category = 'Legal'
+          and user_id in
+              (select uuid from users where organization_id = (select organization_id from matters where id = $1))
+          and cosine_distance(email_vector, (select matter_vector from matters where id=$1)) <= 0.1
+        order by date;
+      `,
+      [matterId]
+    );
+    const emails = await alloyDBClient.query(
+      "SELECT email_id from test_time_entries;"
+    );
+    let vis = [];
+    if (!email_list.rowCount) flag = false;
+    for (let val of email_list.rows) {
+      if (visit_emails[val.email_id] == 1) {
+        flag = false;
+        break;
+      }
+      let scores = await alloyDBClient.query(
+        `
+          SELECT (1 - cosine_distance(email_vector, (select matter_vector from matterVectors where matter_id = $1))) * 100 as score
+          FROM emails
+          WHERE uuid=$2;
+        `,
+        [matterId, val.email_id]
+      );
+      await alloyDBClient.query(
+        `
+          INSERT INTO test_time_entries(matter_id, email_id, score)
+          VALUES ($1, $2, $3)
+          ON CONFLICT(matter_id, email_id)
+          DO UPDATE SET email_id = EXCLUDED.email_id, score = EXCLUDED.score;
+        `,
+        [matterId, val.email_id, scores.rows[0].score]
+      );
+      vis[val.email_id] = 1;
+      visit_emails[val.email_id] = 1;
+      await alloyDBClient.query(
+        `
+          UPDATE matterVectors SET matter_vector = CONCAT(matter_vector, (select email_vector from emails where uuid=$1));
+        `,
+        [val.email_id]
+      );
+    }
+    for (let dval of emails.rows) {
+      if (vis[dval.email_id] != 1 && flag) {
+        await alloyDBClient.query(
+          `
+            DELETE from test_time_entries where matter_id = $1 and email_id = $2;
+          `,
+          [matterId, dval.email_id]
+        );
+      }
+    }
+  }
+  const bestscore = await alloyDBClient.query(
+    `
+      SELECT MAX(score) as best_score, email_id from test_time_entries WHERE matter_id = $1;
+    `,
+    [matterId]
+  );
+  console.log("bestscore: ", bestscore);
+  await alloyDBClient.query(
+    `
+      INSERT INTO confidence_score(matter_id, email_id, score) VALUES ($1,$2,$3)
+      ON CONFLICT (email_id)
+      DO UPDATE SET matter_id=$1, score=$3;    
+    `,
+    [matterId, bestscore.rows[0].email_id, bestscore.rows[0].best_score]
+  );
+}
+
+module.exports.handleBatchEmail = async () => {
+  const matterlist = await alloyDBClient.query("SELECT id FROM matters;");
+  for (let val of matterlist.rows) {
+    await handleMatchingEmail(val.id);
+  }
+};
 // This function returns the ID from the matters table that best matches the provided email ID.
 module.exports.getMatchingMatter = async (body) => {
   try {
@@ -60,7 +164,7 @@ module.exports.getMatchingMatter = async (body) => {
     );
 
     if (!orgId.rowCount) {
-      return { msg: "Invalid Email!", rlt: null };
+      return { msg: "Invalid Email!" };
     }
 
     const matterId = await alloyDBClient.query(
@@ -85,61 +189,12 @@ module.exports.getMatchingMatter = async (body) => {
     );
 
     if (!matterId.rowCount) {
-      return { msg: "There is no associated matter", rlt: null };
+      return { msg: "There is no associated matter" };
     }
-    return { msg: "ok", rlt: matterId.rows };
+    return matterId.rows;
   } catch (error) {
     console.log(error);
     throw new Error(error);
-  }
-};
-
-// This function retrieves related emails based on a given matter ID and calculates their respective scores.
-const getMatchingScore = async (body) => {
-  const { matterId } = body;
-  // retrives related emails based on a given matter ID
-  const matchingEmails = await alloyDBClient.query(
-    `
-      SELECT uuid AS email_id
-      FROM emails
-      WHERE user_id =
-            (SELECT uuid FROM users WHERE organization_id = (SELECT organization_id FROM matters WHERE id = $1))
-      AND email_category = 'Legal'        
-    `,
-    [matterId]
-  );
-  // if matching emails exist
-  if (matchingEmails.rowCount) {
-    for (let val of matchingEmails.rows) {
-      const matchingMatterId = await this.getMatchingMatter({
-        emailId: val.email_id,
-      });
-      if (matchingMatterId.msg == "ok") {
-        await alloyDBClient.query(
-          `
-              UPDATE confidence_score
-              SET matter_id = $1,
-                  score=(SELECT (1 - (email_vector <=> matter_vector)) * 100 as score
-                        FROM emails,
-                              matters
-                        WHERE emails.uuid = $2
-                          AND matters.id = $1
-                        LIMIT 1)
-              WHERE email_id = $2              
-            `,
-          [matchingMatterId.rlt[0].id, val.email_id]
-        );
-      } else {
-        await alloyDBClient.query(
-          `
-            DELETE
-            FROM confidence_score
-            WHERE email_id = $1;          
-          `,
-          [val.email_id]
-        );
-      }
-    }
   }
 };
 
@@ -167,7 +222,7 @@ module.exports.handleUpdateMatters = async (body) => {
       `,
       [data.id]
     );
-    await getMatchingScore({ matterId: data.id });
+    await handleMatchingEmail(data.id);
     return { status: "ok", op: "update" };
   } catch (error) {
     console.log(error);
@@ -198,7 +253,7 @@ module.exports.handleInsertMatters = async (body) => {
       `,
       [data.id]
     );
-    await getMatchingScore({ matterId: data.id });
+    await handleMatchingEmail(data.id);
     return { status: "ok", op: "insert" };
   } catch (error) {
     console.log(error);
@@ -210,7 +265,12 @@ module.exports.handleInsertMatters = async (body) => {
 module.exports.handleDeleteMatters = async (body) => {
   try {
     const data = body.event.data.old;
-    await getMatchingScore({ matterId: data.id });
+    await alloyDBClient.query(
+      `
+        DELETE from test_time_entries where matter_id = $1;
+      `,
+      [data.id]
+    );
   } catch (error) {
     console.log(error);
     throw new Error(error);
@@ -256,42 +316,6 @@ module.exports.handleUpdateEmails = async (body) => {
       [data.uuid]
     );
 
-    const matchingMatterId = await this.getMatchingMatter({
-      emailId: data.uuid,
-    });
-
-    if (matchingMatterId.msg == "ok") {
-      // calculate score
-      const score = await alloyDBClient.query(
-        `
-          SELECT (1 - (email_vector <=> matter_vector)) * 100 as score
-          FROM matters,
-              emails
-          WHERE emails.uuid = $1
-            and matters.id = $2;
-        `,
-        [data.uuid, matchingMatterId.rlt[0].id]
-      );
-      await alloyDBClient.query(
-        `
-          INSERT INTO confidence_score (email_id, matter_id, score)
-          VALUES ($1, $2, $3)
-          ON CONFLICT (email_id)
-              DO UPDATE
-              SET matter_id = $2,
-                  score = $3;        
-        `,
-        [data.uuid, matchingMatterId.rlt[0].id, score.rows[0].score]
-      );
-    } else {
-      await alloyDBClient.query(
-        `
-          DELETE FROM confidence_score WHERE email_id=$1;
-        `,
-        [data.uuid]
-      );
-    }
-
     return { status: "ok", op: "update" };
   } catch (error) {
     console.log(error);
@@ -335,48 +359,10 @@ module.exports.handleInsertEmails = async (body) => {
       `,
       [data.uuid]
     );
-
-    const matchingMatterId = await this.getMatchingMatter({
-      emailId: data.uuid,
-    });
-
-    if (matchingMatterId.msg == "ok") {
-      const score = await alloyDBClient.query(
-        `
-          SELECT (1 - (email_vector <=> matter_vector)) * 100 as score
-          FROM matters,
-              emails
-          WHERE emails.uuid = $1
-            and matters.id = $2;
-        `,
-        [data.uuid, matchingMatterId.rlt[0].id]
-      );
-      await alloyDBClient.query(
-        `
-          INSERT INTO confidence_score(email_id, matter_id, score)
-          values($1, $2, $3);        
-        `,
-        [data.uuid, matchingMatterId.rlt[0].id, score.rows[0].score]
-      );
+    if (data.email_category == "Legal") {
+      await handleBatchEmail();
     }
-
     return { status: "ok", op: "insert" };
-  } catch (error) {
-    console.log(error);
-    throw new Error(error);
-  }
-};
-
-// This function is invoked when a element is deleted in the emails table.
-module.exports.handleDeleteEmails = async (body) => {
-  try {
-    const data = body.event.data.old;
-    alloyDBClient.query(
-      `
-        DELETE FROM confidence_score WHERE email_id=$1;
-      `,
-      [data.uuid]
-    );
   } catch (error) {
     console.log(error);
     throw new Error(error);
