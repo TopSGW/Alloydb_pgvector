@@ -140,10 +140,28 @@ async function handleMatchingEmail(matterId) {
       "SELECT email_id from test_time_entries;"
     );
     let vis = [];
-    if (!email_list.rowCount) flag = false;
+    if (!email_list.rowCount) {
+      await alloyDBClient.query(
+        `
+          UPDATE matterVectors
+          SET matter_vector=(SELECT matter_vector FROM matters WHERE id = $1)
+          where matter_id = $1;
+        `,
+        [matterId]
+      );
+      flag = false;
+    }
     for (let val of email_list.rows) {
       if (visit_emails[val.email_id] == 1) {
         flag = false;
+        await alloyDBClient.query(
+          `
+            UPDATE matterVectors
+            SET matter_vector=(SELECT matter_vector FROM matters WHERE id = $1)
+            where matter_id = $1;
+          `,
+          [matterId]
+        );
         break;
       }
       let scores = await alloyDBClient.query(
@@ -183,21 +201,36 @@ async function handleMatchingEmail(matterId) {
       }
     }
   }
-  const bestscore = await alloyDBClient.query(
+  const scorelist = await alloyDBClient.query(
     `
-      SELECT MAX(score) as best_score, email_id from test_time_entries WHERE matter_id = $1;
+      SELECT score, email_id from test_time_entries WHERE matter_id = $1;
     `,
     [matterId]
   );
-  console.log("bestscore: ", bestscore);
-  await alloyDBClient.query(
-    `
-      INSERT INTO confidence_score(matter_id, email_id, score) VALUES ($1,$2,$3)
-      ON CONFLICT (email_id)
-      DO UPDATE SET matter_id=$1, score=$3;    
-    `,
-    [matterId, bestscore.rows[0].email_id, bestscore.rows[0].best_score]
-  );
+  for (let val of scorelist.rows) {
+    let confidence_score = await alloyDBClient.query(
+      `
+        SELECT score FROM confidence_score WHERE email_id = $1;
+      `,
+      [val.email_id]
+    );
+    if (!confidence_score.rowCount) {
+      await alloyDBClient.query(
+        `
+          INSERT INTO confidence_score(email_id, matter_id, score)
+          VALUES ($1,$2,$3) 
+        `,
+        [val.email_id, matterId, val.score]
+      );
+    } else if (confidence_score.rows[0].score < val.score) {
+      await alloyDBClient.query(
+        `
+          UPDATE confidence_score SET matter_id = $1, score = $2 WHERE email_id = $3
+        `,
+        [matterId, val.score, val.email_id]
+      );
+    }
+  }
 }
 
 module.exports.handleBatchEmail = async () => {
