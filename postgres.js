@@ -392,7 +392,41 @@ module.exports.handleUpdateEmails = async (body) => {
         `,
       [data.uuid]
     );
+    const matchingMatterId = await this.getMatchingMatter({
+      emailId: data.uuid,
+    });
 
+    if (matchingMatterId.msg == "ok") {
+      // calculate score
+      const score = await alloyDBClient.query(
+        `
+          SELECT (1 - (email_vector <=> matter_vector)) * 100 as score
+          FROM matters,
+              emails
+          WHERE emails.uuid = $1
+            and matters.id = $2;
+        `,
+        [data.uuid, matchingMatterId.rlt[0].id]
+      );
+      await alloyDBClient.query(
+        `
+          INSERT INTO confidence_score (email_id, matter_id, score)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (email_id)
+              DO UPDATE
+              SET matter_id = $2,
+                  score = $3;        
+        `,
+        [data.uuid, matchingMatterId.rlt[0].id, score.rows[0].score]
+      );
+    } else {
+      await alloyDBClient.query(
+        `
+          DELETE FROM confidence_score WHERE email_id=$1;
+        `,
+        [data.uuid]
+      );
+    }
     return { status: "ok", op: "update" };
   } catch (error) {
     console.log(error);
