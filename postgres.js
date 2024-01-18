@@ -71,13 +71,12 @@ module.exports.getMatchingMatter = async (body) => {
     if (!orgId.rowCount) {
       return { msg: 'Invalid Email!', rlt: null };
     }
-    const userName = `${orgId.rows[0].firstname} ${orgId.rows[0].last_name}`;
+    //    const userName = `${orgId.rows[0].firstname} ${orgId.rows[0].last_name}`;
     const matterId = await alloyDBClient.query(
       `
         SELECT id
         FROM matters
         WHERE organization_id = $2
-          AND attorney_full_name != NULL
           AND id IN
               (SELECT matter_id
               FROM contacts
@@ -85,7 +84,6 @@ module.exports.getMatchingMatter = async (body) => {
                     (SELECT email_contact_vector
                       FROM emails
                       WHERE emails.uuid = $1) < 0.3)
-          AND embedding('textembedding-gecko@003', attorney_full_name) <=> embedding('textembedding-gecko@003', $3) < 0.1
         ORDER BY matter_vector <->
                 (SELECT email_vector
                   FROM emails
