@@ -1,6 +1,6 @@
-const { SecretManagerServiceClient } = require("@google-cloud/secret-manager");
-const { Pool } = require("pg");
-const fs = require("fs");
+const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
+const { Pool } = require('pg');
+const fs = require('fs');
 
 let alloyDBClient;
 (async () => {
@@ -11,7 +11,7 @@ let alloyDBClient;
       name: `projects/${process.env.projectId}/secrets/${process.env.secretId}/versions/latest`,
     });
 
-    const payload = version.payload.data.toString("utf8");
+    const payload = version.payload.data.toString('utf8');
     return payload;
   };
 
@@ -32,8 +32,8 @@ let alloyDBClient;
     },
   });
 
-  pool.on("error", (err, client) => {
-    console.error("Unexpected error on idle client", err);
+  pool.on('error', (err, client) => {
+    console.error('Unexpected error on idle client', err);
   });
 
   alloyDBClient = {
@@ -69,34 +69,36 @@ module.exports.getMatchingMatter = async (body) => {
     );
 
     if (!orgId.rowCount) {
-      return { msg: "Invalid Email!", rlt: null };
+      return { msg: 'Invalid Email!', rlt: null };
     }
-
+    const userName = `${orgId.rows[0].firstname} ${orgId.rows[0].last_name}`;
     const matterId = await alloyDBClient.query(
       `
         SELECT id
         FROM matters
         WHERE organization_id = $2
+          AND attorney_full_name != NULL
           AND id IN
               (SELECT matter_id
               FROM contacts
-              WHERE contact_vector <->
+              WHERE contact_vector <=>
                     (SELECT email_contact_vector
                       FROM emails
-                      WHERE emails.uuid = $1) < 1)
+                      WHERE emails.uuid = $1) < 0.3)
+          AND embedding('textembedding-gecko@003', attorney_full_name) <=> embedding('textembedding-gecko@003', $3) < 0.1
         ORDER BY matter_vector <->
                 (SELECT email_vector
                   FROM emails
                   WHERE emails.uuid = $1)
         LIMIT 1;
       `,
-      [emailId, orgId.rows[0].organization_id]
+      [emailId, orgId.rows[0].organization_id, userName]
     );
 
     if (!matterId.rowCount) {
-      return { msg: "There is no associated matter", rlt: null };
+      return { msg: 'There is no associated matter', rlt: null };
     }
-    return { msg: "ok", rlt: matterId.rows };
+    return { msg: 'ok', rlt: matterId.rows };
   } catch (error) {
     console.log(error);
     throw new Error(error);
@@ -104,31 +106,31 @@ module.exports.getMatchingMatter = async (body) => {
 };
 
 async function handleMatchingEmail(matterId) {
-  let visit_emails = [],
-    flag = true;
+  let visit_emails = [];
+  let flag = true;
   while (flag) {
-    const vector_infos = await alloyDBClient.query(
-      `
-        SELECT 1 
-        FROM matterVectors 
-        WHERE matter_id = $1;
-      `,
-      [matterId]
-    );
-    if (!vector_infos.rowCount) {
-      await alloyDBClient.query(
-        `
-          INSERT INTO matterVectors(matter_id, matter_vector)
-          VALUES ($1, (SELECT matter_vector from matters where id = $1));
-        `,
-        [matterId]
-      );
-    }
+    // const vector_infos = await alloyDBClient.query(
+    //   `
+    //     SELECT 1
+    //     FROM matterVectors
+    //     WHERE matter_id = $1;
+    //   `,
+    //   [matterId]
+    // );
+    // if (!vector_infos.rowCount) {
+    //   await alloyDBClient.query(
+    //     `
+    //       INSERT INTO matterVectors(matter_id, matter_vector)
+    //       VALUES ($1, (SELECT matter_vector from matters where id = $1));
+    //     `,
+    //     [matterId]
+    //   );
+    // }
     const email_list = await alloyDBClient.query(
       `
-        select uuid as email_id
-        from emails
-        where emails.email_category = 'Legal'
+        SELECT uuid as email_id
+        FROM emails
+        WHERE emails.email_category = 'Legal'
           and user_id in
               (select uuid from users where organization_id = (select organization_id from matters where id = $1))
           and cosine_distance(email_vector, (select matter_vector from matters where id=$1)) <= 0.1
@@ -137,7 +139,7 @@ async function handleMatchingEmail(matterId) {
       [matterId]
     );
     const emails = await alloyDBClient.query(
-      "SELECT email_id from test_time_entries;"
+      'SELECT email_id from test_time_entries;'
     );
     let vis = [];
     if (!email_list.rowCount) {
@@ -151,19 +153,21 @@ async function handleMatchingEmail(matterId) {
       );
       flag = false;
     }
+
+    email_list.rows.map((email) => {});
     for (let val of email_list.rows) {
-      if (visit_emails[val.email_id] == 1) {
-        flag = false;
-        await alloyDBClient.query(
-          `
-            UPDATE matterVectors
-            SET matter_vector=(SELECT matter_vector FROM matters WHERE id = $1)
-            where matter_id = $1;
-          `,
-          [matterId]
-        );
-        break;
-      }
+      // if (visit_emails[val.email_id] == 1) {
+      //   flag = false;
+      //   await alloyDBClient.query(
+      //     `
+      //       UPDATE matterVectors
+      //       SET matter_vector=(SELECT matter_vector FROM matters WHERE id = $1)
+      //       where matter_id = $1;
+      //     `,
+      //     [matterId]
+      //   );
+      //   break;
+      // }
       let scores = await alloyDBClient.query(
         `
           SELECT (1 - cosine_distance(email_vector, (select matter_vector from matterVectors where matter_id = $1))) * 100 as score
@@ -233,8 +237,47 @@ async function handleMatchingEmail(matterId) {
   }
 }
 
+async function test() {
+  const scoreLimit = 90;
+  const result = await alloyDBClient.query(
+    `
+    SELECT *
+    FROM matters
+    LEFT JOIN confidence_score on matters.id = confidence_score.matter_id
+    LEFT JOIN emails on emails.id = confidence_score.id
+    WHERE score > $1
+    ORDER BY matters.id, emails.date
+  `,
+    [scoreLimit]
+  );
+  const batchGroup = result.rows.reduce((batchGroup, row) => {
+    if (batchGroup[row.matter_id]) {
+      batchGroup[row.matter_id] = [...batchGroup[row.matter_id], row.email_id];
+    } else {
+      batchGroup[row.matter_id] = [row.email_id];
+    }
+    return batchGroup;
+  }, {});
+
+  Prmise.all(
+    Object.keys(batchGroup).map((keu) => {
+      processBatch(key, batchGroup[key]);
+    })
+  ).then(() => {
+    //Update confidence_score table
+  });
+}
+async function processBatch(matter_id, emails) {
+  emails.map(async (email) => {
+    await alloyDBClient.query(
+      'Update matter set vector = xxxx(vector, $2, $3, $4) where id = $1',
+      [matter_id, email.body, email.subject]
+    );
+  });
+}
+
 module.exports.handleBatchEmail = async () => {
-  const matterlist = await alloyDBClient.query("SELECT id FROM matters;");
+  const matterlist = await alloyDBClient.query('SELECT id FROM matters;');
   for (let val of matterlist.rows) {
     await handleMatchingEmail(val.id);
   }
@@ -257,7 +300,7 @@ const getMatchingScore = async (body) => {
       const matchingMatterId = await this.getMatchingMatter({
         emailId: val.email_id,
       });
-      if (matchingMatterId.msg == "ok") {
+      if (matchingMatterId.msg == 'ok') {
         await alloyDBClient.query(
           `
               UPDATE confidence_score
@@ -309,7 +352,7 @@ module.exports.handleUpdateMatters = async (body) => {
       [data.id]
     );
     await getMatchingScore({ matterId: data.id });
-    return { status: "ok", op: "update" };
+    return { status: 'ok', op: 'update' };
   } catch (error) {
     console.log(error);
     throw new Error(error);
@@ -338,7 +381,7 @@ module.exports.handleInsertMatters = async (body) => {
       [data.id]
     );
     await getMatchingScore({ matterId: data.id });
-    return { status: "ok", op: "insert" };
+    return { status: 'ok', op: 'insert' };
   } catch (error) {
     console.log(error);
     throw new Error(error);
@@ -366,6 +409,8 @@ module.exports.handleUpdateEmails = async (body) => {
         SET email_vector = embedding('textembedding-gecko@003',
                             CONCAT(E'Email info \n\n', 'sender: ', sender, 
                               E'\n', 'email_id: ', email_id, 
+                              E'\n', 'cc: ', cc, 
+                              E'\n', 'bcc: ', bcc, 
                               E'\n', 'recipient: ', recipient, 
                               E'\n', 'Subject: ', subject, 
                               E'\n', 'Body: ', body,
@@ -384,6 +429,8 @@ module.exports.handleUpdateEmails = async (body) => {
           SET email_contact_vector = embedding('textembedding-gecko@003',
                                       CONCAT(E'Email info\n\n', 'Sender: ', sender, 
                                           E'\n', 'email_id: ', email_id, 
+                                          E'\n', 'cc: ', cc, 
+                                          E'\n', 'bcc: ', bcc, 
                                           E'\n', 'Recipient: ', recipient, 
                                           E'\n'
                                       )
@@ -396,7 +443,7 @@ module.exports.handleUpdateEmails = async (body) => {
       emailId: data.uuid,
     });
 
-    if (matchingMatterId.msg == "ok") {
+    if (matchingMatterId.msg == 'ok') {
       // calculate score
       const score = await alloyDBClient.query(
         `
@@ -427,7 +474,7 @@ module.exports.handleUpdateEmails = async (body) => {
         [data.uuid]
       );
     }
-    return { status: "ok", op: "update" };
+    return { status: 'ok', op: 'update' };
   } catch (error) {
     console.log(error);
     throw new Error(error);
@@ -439,28 +486,32 @@ module.exports.handleInsertEmails = async (body) => {
     const data = body.event.data.new;
     await alloyDBClient.query(
       `
-          UPDATE emails
-          SET email_vector = embedding('textembedding-gecko@003',
-                              CONCAT(E'Email info \n\n', 'sender: ', sender, 
-                                E'\n', 'email_id: ', email_id, 
-                                E'\n', 'recipient: ', recipient, 
-                                E'\n', 'Subject: ', subject, 
-                                E'\n', 'Body: ', body,
-                                E'\n', 'reasonning: ', reasoning, 
-                                E'\n', 'date ', date
-                              )
+        UPDATE emails
+        SET email_vector = embedding('textembedding-gecko@003',
+                            CONCAT(E'Email info \n\n', 'sender: ', sender, 
+                              E'\n', 'email_id: ', email_id, 
+                              E'\n', 'cc: ', cc, 
+                              E'\n', 'bcc: ', bcc, 
+                              E'\n', 'recipient: ', recipient, 
+                              E'\n', 'Subject: ', subject, 
+                              E'\n', 'Body: ', body,
+                              E'\n', 'reasonning: ', reasoning, 
+                              E'\n', E'date ', date
                             )
-          WHERE uuid = $1;
-        `,
+                          )
+        WHERE uuid = $1;
+      `,
       [data.uuid]
     );
-    console.log("data.uuid", data.uuid);
+
     await alloyDBClient.query(
       `
-          UPDATE emails
+        UPDATE emails
           SET email_contact_vector = embedding('textembedding-gecko@003',
                                       CONCAT(E'Email info\n\n', 'Sender: ', sender, 
                                           E'\n', 'email_id: ', email_id, 
+                                          E'\n', 'cc: ', cc, 
+                                          E'\n', 'bcc: ', bcc, 
                                           E'\n', 'Recipient: ', recipient, 
                                           E'\n'
                                       )
@@ -470,11 +521,7 @@ module.exports.handleInsertEmails = async (body) => {
       [data.uuid]
     );
 
-    const matchingMatterId = await this.getMatchingMatter({
-      emailId: data.uuid,
-    });
-
-    if (matchingMatterId.msg == "ok") {
+    if (matchingMatterId.msg == 'ok') {
       const score = await alloyDBClient.query(
         `
           SELECT (1 - (email_vector <=> matter_vector)) * 100 as score
@@ -493,7 +540,7 @@ module.exports.handleInsertEmails = async (body) => {
         [data.uuid, matchingMatterId.rlt[0].id, score.rows[0].score]
       );
     }
-    return { status: "ok", op: "insert" };
+    return { status: 'ok', op: 'insert' };
   } catch (error) {
     console.log(error);
     throw new Error(error);
@@ -534,7 +581,8 @@ module.exports.handleUpdateContacts = async (body) => {
       `,
       [data.id]
     );
-    return { status: "ok", op: "update" };
+    await getMatchingScore(data.matter_id);
+    return { status: 'ok', op: 'update' };
   } catch (error) {
     console.log(error);
     throw new Error(error);
@@ -559,7 +607,7 @@ module.exports.handleInsertContacts = async (body) => {
       [data.id]
     );
 
-    return { status: "ok", op: "insert" };
+    return { status: 'ok', op: 'insert' };
   } catch (error) {
     console.log(error);
     throw new Error(error);
